@@ -117,7 +117,7 @@
                             Visualisasi Grad-CAM
                         </h2>
                         <p class="text-xs text-slate-500 mb-4">Area berwarna merah/kuning menunjukkan area yang menjadi fokus model saat mengambil keputusan.</p>
-                        <img id="result-gradcam" class="w-full rounded-xl border border-slate-700" alt="Grad-CAM Heatmap" style="display:none">
+                        <img id="result-gradcam" class="w-full rounded-xl border border-slate-700" alt="Grad-CAM Heatmap" style="display:none" onerror="document.getElementById('result-gradcam').style.display='none';document.getElementById('result-gradcam-na').style.display='block'">
                         <p id="result-gradcam-na" class="text-slate-500 text-sm text-center py-8">Peta panas tidak tersedia</p>
                     </div>
                 </div>
@@ -329,13 +329,15 @@
         var gradcamImg = document.getElementById('result-gradcam');
         var gradcamNa = document.getElementById('result-gradcam-na');
         if (data.grad_cam_url) {
-            gradcamImg.src = 'http://localhost:8001' + data.grad_cam_url;
-            gradcamImg.style.display = '';
+            var baseUrl = 'http://127.0.0.1:8001';
+            var imgUrl = data.grad_cam_url.startsWith('http') ? data.grad_cam_url : baseUrl + data.grad_cam_url;
+            gradcamImg.src = imgUrl;
+            gradcamImg.style.display = 'block';
             gradcamNa.style.display = 'none';
             gradcamCard.classList.remove('hidden');
         } else {
             gradcamImg.style.display = 'none';
-            gradcamNa.style.display = '';
+            gradcamNa.style.display = 'block';
             gradcamCard.classList.add('hidden');
         }
 
