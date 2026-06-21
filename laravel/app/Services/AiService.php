@@ -126,6 +126,9 @@ class AiService
     public function listModels(): array
     {
         $result = $this->safeGet("{$this->baseUrl}/models/list", []);
+        if (isset($result['error'])) {
+            return [];
+        }
         if (is_array($result) && isset($result['value']) && is_array($result['value'])) {
             return $result['value'];
         }

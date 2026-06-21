@@ -83,27 +83,42 @@
         {{-- Result Section (hidden initially) --}}
         <div id="result-section" class="hidden mt-8">
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {{-- Patient Info Card --}}
-                <div class="bg-slate-800/60 border border-slate-700/50 rounded-2xl p-6 backdrop-blur-sm">
-                    <h2 class="text-lg font-semibold text-white mb-5 flex items-center gap-2">
-                        <svg class="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
-                        </svg>
-                        Informasi Pasien
-                    </h2>
-                    <div class="space-y-4">
-                        <div>
-                            <p class="text-xs text-slate-500 uppercase tracking-wide">Nama Pasien</p>
-                            <p id="result-name" class="text-white font-medium mt-0.5">-</p>
+                <div class="flex flex-col gap-6">
+                    {{-- Patient Info Card --}}
+                    <div class="bg-slate-800/60 border border-slate-700/50 rounded-2xl p-6 backdrop-blur-sm">
+                        <h2 class="text-lg font-semibold text-white mb-5 flex items-center gap-2">
+                            <svg class="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+                            </svg>
+                            Informasi Pasien
+                        </h2>
+                        <div class="space-y-4">
+                            <div>
+                                <p class="text-xs text-slate-500 uppercase tracking-wide">Nama Pasien</p>
+                                <p id="result-name" class="text-white font-medium mt-0.5">-</p>
+                            </div>
+                            <div>
+                                <p class="text-xs text-slate-500 uppercase tracking-wide">Usia</p>
+                                <p id="result-age" class="text-white font-medium mt-0.5">-</p>
+                            </div>
+                            <div>
+                                <p class="text-xs text-slate-500 uppercase tracking-wide mb-2">Foto Rontgen</p>
+                                <img id="result-image" class="w-full rounded-xl border border-slate-700" alt="Patient X-Ray">
+                            </div>
                         </div>
-                        <div>
-                            <p class="text-xs text-slate-500 uppercase tracking-wide">Usia</p>
-                            <p id="result-age" class="text-white font-medium mt-0.5">-</p>
-                        </div>
-                        <div>
-                            <p class="text-xs text-slate-500 uppercase tracking-wide mb-2">Foto Rontgen</p>
-                            <img id="result-image" class="w-full rounded-xl border border-slate-700" alt="Patient X-Ray">
-                        </div>
+                    </div>
+
+                    {{-- Grad-CAM Card --}}
+                    <div id="result-gradcam-card" class="bg-slate-800/60 border border-slate-700/50 rounded-2xl p-6 backdrop-blur-sm hidden">
+                        <h2 class="text-lg font-semibold text-white mb-5 flex items-center gap-2">
+                            <svg class="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                            </svg>
+                            Visualisasi Grad-CAM
+                        </h2>
+                        <p class="text-xs text-slate-500 mb-4">Area berwarna merah/kuning menunjukkan area yang menjadi fokus model saat mengambil keputusan.</p>
+                        <img id="result-gradcam" class="w-full rounded-xl border border-slate-700" alt="Grad-CAM Heatmap" style="display:none">
+                        <p id="result-gradcam-na" class="text-slate-500 text-sm text-center py-8">Peta panas tidak tersedia</p>
                     </div>
                 </div>
 
@@ -125,19 +140,6 @@
                     </div>
                     <h3 class="text-sm font-medium text-slate-500 uppercase tracking-wide mb-4">Distribusi Probabilitas</h3>
                     <div id="result-probabilities" class="space-y-3"></div>
-                </div>
-
-                {{-- Grad-CAM Card --}}
-                <div id="result-gradcam-card" class="bg-slate-800/60 border border-slate-700/50 rounded-2xl p-6 backdrop-blur-sm hidden">
-                    <h2 class="text-lg font-semibold text-white mb-5 flex items-center gap-2">
-                        <svg class="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
-                        </svg>
-                        Visualisasi Grad-CAM
-                    </h2>
-                    <p class="text-xs text-slate-500 mb-4">Area berwarna merah/kuning menunjukkan area yang menjadi fokus model saat mengambil keputusan.</p>
-                    <img id="result-gradcam" class="w-full rounded-xl border border-slate-700" alt="Grad-CAM Heatmap" style="display:none">
-                    <p id="result-gradcam-na" class="text-slate-500 text-sm text-center py-8">Peta panas tidak tersedia</p>
                 </div>
             </div>
         </div>
@@ -195,7 +197,7 @@
             <img src="{{ $sess['grad_cam_url'] }}" class="w-full max-w-lg rounded-xl border border-slate-700 mx-auto" alt="Grad-CAM Heatmap">
         </div>
         @endif
-</div>
+    @endif
 @endsection
 
 @push('scripts')
@@ -327,7 +329,7 @@
         var gradcamImg = document.getElementById('result-gradcam');
         var gradcamNa = document.getElementById('result-gradcam-na');
         if (data.grad_cam_url) {
-            gradcamImg.src = data.grad_cam_url;
+            gradcamImg.src = 'http://localhost:8001' + data.grad_cam_url;
             gradcamImg.style.display = '';
             gradcamNa.style.display = 'none';
             gradcamCard.classList.remove('hidden');
