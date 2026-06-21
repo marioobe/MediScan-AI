@@ -126,6 +126,19 @@
                     <h3 class="text-sm font-medium text-slate-500 uppercase tracking-wide mb-4">Distribusi Probabilitas</h3>
                     <div id="result-probabilities" class="space-y-3"></div>
                 </div>
+
+                {{-- Grad-CAM Card --}}
+                <div id="result-gradcam-card" class="bg-slate-800/60 border border-slate-700/50 rounded-2xl p-6 backdrop-blur-sm hidden">
+                    <h2 class="text-lg font-semibold text-white mb-5 flex items-center gap-2">
+                        <svg class="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                        </svg>
+                        Visualisasi Grad-CAM
+                    </h2>
+                    <p class="text-xs text-slate-500 mb-4">Area berwarna merah/kuning menunjukkan area yang menjadi fokus model saat mengambil keputusan.</p>
+                    <img id="result-gradcam" class="w-full rounded-xl border border-slate-700" alt="Grad-CAM Heatmap" style="display:none">
+                    <p id="result-gradcam-na" class="text-slate-500 text-sm text-center py-8">Peta panas tidak tersedia</p>
+                </div>
             </div>
         </div>
     @endif
@@ -170,7 +183,18 @@
                 </div>
             </div>
         </div>
-    @endif
+        @if(!empty($sess['grad_cam_url']))
+        <div class="mt-6 bg-slate-800/60 border border-slate-700/50 rounded-2xl p-6 backdrop-blur-sm">
+            <h2 class="text-lg font-semibold text-white mb-5 flex items-center gap-2">
+                <svg class="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                </svg>
+                Visualisasi Grad-CAM
+            </h2>
+            <p class="text-xs text-slate-500 mb-4">Area berwarna merah/kuning menunjukkan area yang menjadi fokus model saat mengambil keputusan.</p>
+            <img src="{{ $sess['grad_cam_url'] }}" class="w-full max-w-lg rounded-xl border border-slate-700 mx-auto" alt="Grad-CAM Heatmap">
+        </div>
+        @endif
 </div>
 @endsection
 
@@ -296,6 +320,21 @@
                     '<div class="bg-gradient-to-r from-indigo-500 to-cyan-500 h-3 rounded-full transition-all duration-500" style="width: ' + pct + '%"></div>' +
                 '</div>';
             resultProbabilities.appendChild(div);
+        }
+
+        // Grad-CAM
+        var gradcamCard = document.getElementById('result-gradcam-card');
+        var gradcamImg = document.getElementById('result-gradcam');
+        var gradcamNa = document.getElementById('result-gradcam-na');
+        if (data.grad_cam_url) {
+            gradcamImg.src = data.grad_cam_url;
+            gradcamImg.style.display = '';
+            gradcamNa.style.display = 'none';
+            gradcamCard.classList.remove('hidden');
+        } else {
+            gradcamImg.style.display = 'none';
+            gradcamNa.style.display = '';
+            gradcamCard.classList.add('hidden');
         }
 
         resultSection.classList.remove('hidden');

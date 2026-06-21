@@ -5,6 +5,7 @@ import uuid
 from datetime import datetime
 
 import numpy as np
+import cv2
 from PIL import Image
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -78,6 +79,32 @@ def _save_prediction(model_id, image_path, predicted_class, confidence, probabil
     with open(pred_file, "w") as f:
         json.dump(pred_data, f, indent=2)
     return pred_data
+
+def _generate_gradcam(model, img_array, predicted_idx, original_pil):
+    last_conv = model.get_layer('out_relu')
+    grad_model = tf.keras.models.Model(
+        inputs=model.inputs,
+        outputs=[last_conv.output, model.output]
+    )
+    with tf.GradientTape() as tape:
+        conv_out, preds = grad_model(img_array)
+        loss = preds[:, predicted_idx]
+    grads = tape.gradient(loss, conv_out)
+    pooled = tf.reduce_mean(grads, axis=(0, 1, 2))
+    heatmap = tf.reduce_sum(tf.multiply(pooled, conv_out[0]), axis=-1)
+    heatmap = tf.maximum(heatmap, 0) / (tf.reduce_max(heatmap) + tf.keras.backend.epsilon())
+    heatmap = heatmap.numpy()
+    orig_width, orig_height = original_pil.size
+    heatmap = cv2.resize(heatmap, (orig_width, orig_height))
+    heatmap = np.uint8(255 * heatmap)
+    heatmap_color = cv2.applyColorMap(heatmap, cv2.COLORMAP_JET)
+    original_np = np.array(original_pil)
+    original_bgr = cv2.cvtColor(original_np, cv2.COLOR_RGB2BGR)
+    overlay = cv2.addWeighted(original_bgr, 0.6, heatmap_color, 0.4, 0)
+    filename = f"gradcam_{uuid.uuid4()}.png"
+    path = os.path.join(PREDICTIONS_DIR, filename)
+    cv2.imwrite(path, overlay)
+    return filename
 
 def _load_all_predictions():
     predictions = []
@@ -191,6 +218,13 @@ async def get_confusion_matrix(model_id: str):
         raise HTTPException(404, "Confusion matrix not found")
     return FileResponse(path, media_type="image/png")
 
+@app.get("/files/gradcam/{filename}")
+async def get_gradcam(filename: str):
+    path = os.path.join(PREDICTIONS_DIR, filename)
+    if not os.path.exists(path):
+        raise HTTPException(404, "File not found")
+    return FileResponse(path, media_type="image/png")
+
 @app.post("/predict")
 async def predict(file: UploadFile = File(...)):
     ext = os.path.splitext(file.filename)[1].lower()
@@ -200,8 +234,8 @@ async def predict(file: UploadFile = File(...)):
     if model is None:
         raise HTTPException(400, "No active model available. Please ask admin to activate a model first.")
     image_bytes = await file.read()
-    image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-    image = image.resize(IMG_SIZE)
+    original_pil = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+    image = original_pil.resize(IMG_SIZE)
     img_array = img_to_array(image)
     img_array = np.expand_dims(img_array, axis=0)
     img_array = preprocess_input(img_array)
@@ -210,6 +244,11 @@ async def predict(file: UploadFile = File(...)):
     confidence = float(predictions[predicted_idx])
     predicted_class = class_names[predicted_idx]
     probabilities = {class_names[i]: float(predictions[i]) for i in range(len(class_names))}
+    try:
+        grad_cam_filename = _generate_gradcam(model, img_array, predicted_idx, original_pil)
+        grad_cam_url = f"/files/gradcam/{grad_cam_filename}"
+    except Exception as e:
+        grad_cam_url = None
     image_filename = f"pred_{uuid.uuid4()}_{file.filename}"
     image_path = os.path.join(PREDICTIONS_DIR, image_filename)
     image.save(image_path)
@@ -219,6 +258,7 @@ async def predict(file: UploadFile = File(...)):
         "confidence": confidence,
         "probabilities": probabilities,
         "prediction_id": pred_data["id"],
+        "grad_cam_url": grad_cam_url,
     }
 
 @app.get("/predictions")

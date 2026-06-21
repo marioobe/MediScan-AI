@@ -68,6 +68,22 @@ class PredictionController extends Controller
                 'model_label' => $modelLabel,
             ]);
 
+            // Download Grad-CAM image from FastAPI if available
+            if (!empty($result['grad_cam_url'])) {
+                try {
+                    $gradCamUrl = rtrim(env('AI_SERVICE_URL', 'http://localhost:8001'), '/') . $result['grad_cam_url'];
+                    $gradCamContents = @file_get_contents($gradCamUrl);
+                    if ($gradCamContents !== false) {
+                        $gradCamPath = 'predictions/gradcam_' . uniqid() . '.png';
+                        Storage::disk('public')->put($gradCamPath, $gradCamContents);
+                        $prediction->update(['grad_cam_path' => $gradCamPath]);
+                        $result['grad_cam_url'] = asset('storage/' . $gradCamPath);
+                    }
+                } catch (\Exception $e) {
+                    // Grad-CAM tidak tersedia, lanjutkan
+                }
+            }
+
             $result['db_id'] = $prediction->id;
         } catch (\Exception $e) {
             if ($request->ajax()) {

@@ -295,6 +295,20 @@ function showDetail(id) {
         html += '</div>';
     }
 
+    // Grad-CAM
+    var gradcamPath = pred.grad_cam_path;
+    if (gradcamPath) {
+        var gradcamUrl = '{{ asset("storage") }}/' + gradcamPath;
+        html += '<div class="mb-4 rounded-xl overflow-hidden bg-slate-900/30 p-2 border border-amber-800/50">';
+        html += '<h4 class="text-sm font-medium text-amber-400 mb-2 flex items-center gap-2">';
+        html += '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>';
+        html += 'Visualisasi Grad-CAM';
+        html += '</h4>';
+        html += '<p class="text-xs text-slate-500 mb-3">Area merah/kuning = area fokus model dalam mengambil keputusan.</p>';
+        html += '<img src="' + gradcamUrl + '" alt="Grad-CAM" class="max-h-64 rounded-lg object-contain mx-auto" onerror="this.parentElement.innerHTML=\'<p class=\\\'text-slate-500 py-8\\\'>Grad-CAM tidak tersedia</p>\'">';
+        html += '</div>';
+    }
+
     html += '<div class="text-center mb-4">';
     html += '<p class="text-sm text-slate-500 uppercase tracking-wide">Predicted Class</p>';
     html += '<p class="text-2xl font-bold bg-gradient-to-r from-indigo-400 to-sky-400 bg-clip-text text-transparent mt-1">' + escapeHtml(pred.predicted_class) + '</p>';

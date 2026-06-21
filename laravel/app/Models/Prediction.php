@@ -10,7 +10,7 @@ class Prediction extends Model
     protected $fillable = [
         'prediction_id', 'ai_model_id', 'image_path', 'original_name',
         'predicted_class', 'confidence', 'probabilities', 'model_label',
-        'patient_name', 'patient_age',
+        'patient_name', 'patient_age', 'grad_cam_path',
     ];
 
     protected $casts = [
