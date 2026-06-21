@@ -108,6 +108,28 @@
                         </div>
                     </div>
 
+                    {{-- Classification Result Card --}}
+                    <div id="result-classification" class="bg-slate-800/60 border border-slate-700/50 rounded-2xl p-6 backdrop-blur-sm">
+                        <h2 class="text-lg font-semibold text-white mb-5 flex items-center gap-2">
+                            <svg class="w-5 h-5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                            </svg>
+                            Hasil Klasifikasi
+                        </h2>
+                        <div class="text-center mb-6">
+                            <p class="text-sm text-slate-500 uppercase tracking-wide">Kelas yang Diprediksi</p>
+                            <p id="result-class" class="text-2xl font-bold bg-gradient-to-r from-indigo-400 to-cyan-400 bg-clip-text text-transparent mt-1">-</p>
+                            <div class="mt-3 inline-flex items-center space-x-2 bg-indigo-900/40 px-4 py-2 rounded-full border border-indigo-700/30">
+                                <span class="text-sm font-medium text-indigo-300">Tingkat Kepercayaan</span>
+                                <span id="result-confidence" class="text-lg font-bold text-indigo-400">-</span>
+                            </div>
+                        </div>
+                        <h3 class="text-sm font-medium text-slate-500 uppercase tracking-wide mb-4">Distribusi Probabilitas</h3>
+                        <div id="result-probabilities" class="space-y-3"></div>
+                    </div>
+                </div>
+
+                <div class="flex flex-col gap-6">
                     {{-- Grad-CAM Card --}}
                     <div id="result-gradcam-card" class="bg-slate-800/60 border border-slate-700/50 rounded-2xl p-6 backdrop-blur-sm hidden">
                         <h2 class="text-lg font-semibold text-white mb-5 flex items-center gap-2">
@@ -120,26 +142,6 @@
                         <img id="result-gradcam" class="w-full rounded-xl border border-slate-700" alt="Grad-CAM Heatmap" style="display:none" onerror="document.getElementById('result-gradcam').style.display='none';document.getElementById('result-gradcam-na').style.display='block'">
                         <p id="result-gradcam-na" class="text-slate-500 text-sm text-center py-8">Peta panas tidak tersedia</p>
                     </div>
-                </div>
-
-                {{-- Classification Result Card --}}
-                <div id="result-classification" class="bg-slate-800/60 border border-slate-700/50 rounded-2xl p-6 backdrop-blur-sm">
-                    <h2 class="text-lg font-semibold text-white mb-5 flex items-center gap-2">
-                        <svg class="w-5 h-5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                        </svg>
-                        Hasil Klasifikasi
-                    </h2>
-                    <div class="text-center mb-6">
-                        <p class="text-sm text-slate-500 uppercase tracking-wide">Kelas yang Diprediksi</p>
-                        <p id="result-class" class="text-2xl font-bold bg-gradient-to-r from-indigo-400 to-cyan-400 bg-clip-text text-transparent mt-1">-</p>
-                        <div class="mt-3 inline-flex items-center space-x-2 bg-indigo-900/40 px-4 py-2 rounded-full border border-indigo-700/30">
-                            <span class="text-sm font-medium text-indigo-300">Tingkat Kepercayaan</span>
-                            <span id="result-confidence" class="text-lg font-bold text-indigo-400">-</span>
-                        </div>
-                    </div>
-                    <h3 class="text-sm font-medium text-slate-500 uppercase tracking-wide mb-4">Distribusi Probabilitas</h3>
-                    <div id="result-probabilities" class="space-y-3"></div>
                 </div>
             </div>
         </div>
