@@ -137,6 +137,42 @@ def _set_active_model(model_id, model_path, class_names):
         }, f, indent=2)
 ```
 
+**Grad-CAM Visualization:**
+
+Grad-CAM (Gradient-weighted Class Activation Mapping) digunakan untuk memvisualisasikan area gambar yang menjadi fokus model dalam mengambil keputusan. Implementasi menggunakan layer `out_relu` (layer konvolusi terakhir) dari MobileNetV2:
+
+```python
+def _generate_gradcam(model, img_array, original_pil):
+    grad_model = tf.keras.models.Model(
+        inputs=model.input,
+        outputs=[model.get_layer("out_relu").output, model.output]
+    )
+    with tf.GradientTape() as tape:
+        conv_output, predictions = grad_model(np.array(img_array))
+        loss = predictions[:, np.argmax(predictions[0])]
+    grads = tape.gradient(loss, conv_output)
+    pooled_grads = tf.reduce_mean(grads, axis=(0, 1, 2))
+    heatmap = tf.reduce_mean(
+        tf.multiply(pooled_grads, conv_output), axis=-1
+    )[0]
+    heatmap = np.maximum(heatmap, 0)
+    heatmap /= (np.max(heatmap) + 1e-10)
+    heatmap = cv2.resize(heatmap, original_pil.size)
+    heatmap = np.uint8(255 * heatmap)
+    heatmap = cv2.applyColorMap(heatmap, cv2.COLORMAP_JET)
+    original_bgr = cv2.cvtColor(
+        np.array(original_pil), cv2.COLOR_RGB2BGR
+    )
+    overlay = cv2.addWeighted(original_bgr, 0.6, heatmap, 0.4, 0)
+    overlay_rgb = cv2.cvtColor(overlay, cv2.COLOR_BGR2RGB)
+    overlay_pil = Image.fromarray(overlay_rgb)
+    gradcam_path = os.path.join(
+        PREDICTIONS_DIR, f"gradcam_{uuid.uuid4()}.png"
+    )
+    overlay_pil.save(gradcam_path)
+    return f"/files/gradcam/{os.path.basename(gradcam_path)}"
+```
+
 **Endpoint Training (5 parameter dinamis):**
 
 ```python
@@ -186,11 +222,13 @@ async def predict(file: UploadFile = File(...)):
     confidence = float(predictions[predicted_idx])
     predicted_class = class_names[predicted_idx]
     probabilities = {class_names[i]: float(predictions[i]) for i in range(len(class_names))}
-    pred_data = _save_prediction(model_id, image_filename, predicted_class, confidence, probabilities)
+    gradcam_url = _generate_gradcam(model, img_array, image)
+    pred_data = _save_prediction(model_id, image_filename, predicted_class, confidence, probabilities, gradcam_url)
     return {
         "predicted_class": predicted_class,
         "confidence": confidence,
         "probabilities": probabilities,
+        "grad_cam_url": gradcam_url,
     }
 ```
 
@@ -369,6 +407,8 @@ Fase 2 (Fine-Tuning) melanjutkan sisa epoch dengan base model yang diaktifkan se
 
 Penggunaan parameter `initial_epoch` pada pemanggilan `model.fit` fase 2 memastikan bahwa hitungan epoch berlanjut secara berurutan. Jika fase 1 berhenti lebih awal karena EarlyStopping, fase 2 akan mengisi sisa epoch hingga total yang ditentukan.
 
+**Grad-CAM (Gradient-weighted Class Activation Mapping):** Setiap kali pengguna melakukan prediksi melalui endpoint `/predict`, sistem secara otomatis menghasilkan visualisasi Grad-CAM. Heatmap dihasilkan dari gradient yang mengalir ke layer konvolusi terakhir (`out_relu`) arsitektur MobileNetV2. Gradient tersebut di-pooling secara global untuk mendapatkan bobot setiap fitur, kemudian dikalikan dengan aktivasi konvolusi untuk menghasilkan peta panas. Peta ini di-resize sesuai ukuran asli gambar, di-overlay dengan opacity 60% gambar asli dan 40% heatmap menggunakan OpenCV, lalu disimpan di `storage/predictions/`. URL gambar Grad-CAM disertakan dalam respons prediksi dan ditampilkan di halaman publik maupun admin panel.
+
 ### 3.4 Hasil
 
 Model final yang dihasilkan bernama `model_061630de.keras` dengan hasil evaluasi sebagai berikut.
@@ -388,6 +428,8 @@ Model final yang dihasilkan bernama `model_061630de.keras` dengan hasil evaluasi
 | Loss Validasi | 0.4471 |
 
 Confusion matrix menunjukkan performa yang aman secara klinis. Sistem berhasil meminimalkan kesalahan prediksi pada kelas malignant. False negative rate pada kelas malignant sangat rendah, sehingga hampir seluruh kasus tumor ganas terdeteksi dengan benar. Capaian ini memenuhi tujuan utama sistem yaitu mengutamakan keselamatan pasien di atas segalanya.
+
+Selain metrik kuantitatif, sistem juga menyediakan visualisasi **Grad-CAM** pada setiap prediksi. Peta panas yang dihasilkan menunjukkan area mana pada gambar USG yang paling berkontribusi terhadap keputusan model. Area berwarna merah/kuning menandakan fokus tinggi, sementara area biru menunjukkan kontribusi rendah. Visualisasi ini membantu pengguna memahami dasar pengambilan keputusan model dan meningkatkan kepercayaan terhadap hasil prediksi.
 
 ---
 
@@ -497,6 +539,10 @@ medical-classifier/
 │   │   │       └── ...
 │   │   └── Services/
 │   │       └── AiService.php
+│   ├── database/
+│   │   └── migrations/
+│   │       ├── ...migration_files...
+│   │       └── 2026_06_22_083000_add_gradcam_to_predictions_table.php
 │   ├── resources/views/     # Template Blade
 │   │   ├── admin/           # Dashboard, training, models, predictions
 │   │   ├── public/          # Landing, predict
