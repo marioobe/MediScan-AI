@@ -328,6 +328,7 @@ def _run_training(job_id, dataset_path, classes, cfg):
             epoch_history = job_data.get("epochs", [])
             current_epoch = job_data.get("current_epoch", 0)
             total_epoch = job_data.get("total_epoch", 0)
+            model_id = job_data.get("model_id", "")
             resp = requests.post(laravel_url, json={
                 "job_id": job_id,
                 "status": "Completed",
@@ -336,10 +337,15 @@ def _run_training(job_id, dataset_path, classes, cfg):
                 "epoch_history": epoch_history,
                 "current_epoch": current_epoch,
                 "total_epoch": total_epoch,
+                "model_id": model_id,
             }, timeout=5)
-            _log(job_id, f"Notifikasi ke Laravel: HTTP {resp.status_code}")
+            if resp.ok:
+                _log(job_id, f"Notifikasi ke Laravel: HTTP {resp.status_code} OK")
+            else:
+                _log(job_id, f"Notifikasi ke Laravel: HTTP {resp.status_code} — {resp.text[:200]}")
         except Exception as webhook_err:
             _log(job_id, f"Gagal mengirim notifikasi ke Laravel: {webhook_err}")
+            _log(job_id, f"Laravel webhook URL: {laravel_url}")
     except Exception as e:
         _update_job(job_id, status="failed", error_message=str(e))
         _log(job_id, f"ERROR: {str(e)}")

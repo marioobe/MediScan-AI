@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\AiModel;
+use App\Models\TrainingJob;
 use App\Services\AiService;
 use Illuminate\Http\Request;
 
@@ -44,6 +45,21 @@ class AdminModelController extends Controller
         return view('admin.models', compact('models'));
     }
 
+    private function syncTrainingJobStatus(string $modelId): void
+    {
+        $marker = "[MODEL_ID: {$modelId}]";
+        $job = TrainingJob::where('log', 'like', "%{$marker}%")
+            ->whereIn('status', ['pending', 'validating', 'extracting', 'training'])
+            ->first();
+
+        if ($job) {
+            $job->update([
+                'status' => 'completed',
+                'finished_at' => now(),
+            ]);
+        }
+    }
+
     public function activate(string $modelId)
     {
         $result = $this->aiService->activateSpecificModel($modelId);
@@ -61,6 +77,8 @@ class AdminModelController extends Controller
         }
         $model->is_active = true;
         $model->save();
+
+        $this->syncTrainingJobStatus($modelId);
 
         return back()->with('success', "Model berhasil diaktifkan.");
     }

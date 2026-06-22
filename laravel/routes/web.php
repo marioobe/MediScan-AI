@@ -31,6 +31,7 @@ Route::prefix('admin')->group(function () {
         Route::get('/training', [AdminTrainingController::class, 'index'])->name('admin.training');
         Route::post('/training', [AdminTrainingController::class, 'upload']);
         Route::post('/training/{jobId}/cancel', [AdminTrainingController::class, 'cancel'])->name('admin.training.cancel');
+        Route::post('/training/{jobId}/mark-completed', [AdminTrainingController::class, 'markCompleted']);
         Route::get('/training/{jobId}', [AdminTrainingController::class, 'show'])->name('admin.training.progress');
         Route::get('/predictions', [AdminPredictionController::class, 'index'])->name('admin.predictions');
         Route::get('/predictions/{id}', [AdminPredictionController::class, 'show'])->name('admin.predictions.show');

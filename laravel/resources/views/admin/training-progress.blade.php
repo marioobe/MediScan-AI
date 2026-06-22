@@ -293,6 +293,12 @@ function activateModel() {
         .then(function(r) { return r.json(); })
         .then(function(data) {
             showToast('Model ' + data.model_id + ' activated successfully!', 'success');
+            // Sync training job status in Laravel DB (safeguard if webhook failed)
+            fetch('/admin/training/{{ $job->id }}/mark-completed', {
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Content-Type': 'application/json' },
+                body: JSON.stringify({ model_id: data.model_id })
+            }).catch(function() {});
             setTimeout(function() { window.location.href = '/admin/models'; }, 1000);
         })
         .catch(function() {

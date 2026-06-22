@@ -123,6 +123,25 @@ class AdminTrainingController extends Controller
         ]);
     }
 
+    public function markCompleted(Request $request, string $id)
+    {
+        $job = TrainingJob::findOrFail($id);
+        $modelId = $request->input('model_id');
+
+        $updateData = [
+            'status' => 'completed',
+            'finished_at' => now(),
+        ];
+
+        if ($modelId) {
+            $updateData['log'] = ($job->log ?? '') . "\n[MODEL_ID: {$modelId}]";
+        }
+
+        $job->update($updateData);
+
+        return response()->json(['success' => true]);
+    }
+
     public function webhook(Request $request)
     {
         Log::info($request->all());
@@ -135,6 +154,7 @@ class AdminTrainingController extends Controller
             'epoch_history'  => 'nullable|array',
             'current_epoch'  => 'nullable|integer',
             'total_epoch'    => 'nullable|integer',
+            'model_id'       => 'nullable|string',
         ]);
 
         $job = TrainingJob::where('job_id', $validated['job_id'])->first();
@@ -155,6 +175,11 @@ class AdminTrainingController extends Controller
         }
         if (isset($validated['total_epoch'])) {
             $updateData['total_epoch'] = $validated['total_epoch'];
+        }
+
+        $modelId = $validated['model_id'] ?? null;
+        if ($modelId) {
+            $updateData['log'] = ($job->log ?? '') . "\n[MODEL_ID: {$modelId}]";
         }
 
         $job->update($updateData);
