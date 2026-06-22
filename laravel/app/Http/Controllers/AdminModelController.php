@@ -52,10 +52,15 @@ class AdminModelController extends Controller
         }
 
         AiModel::where('is_active', true)->update(['is_active' => false]);
-        AiModel::updateOrCreate(
-            ['model_id' => $modelId],
-            ['is_active' => true]
-        );
+
+        $model = AiModel::firstOrNew(['model_id' => $modelId]);
+        if (!$model->exists) {
+            $model->name = 'Model ' . $modelId;
+            $model->class_names = ['Benign', 'Malignant', 'Normal'];
+            $model->file_path = 'models/' . $modelId;
+        }
+        $model->is_active = true;
+        $model->save();
 
         return back()->with('success', "Model berhasil diaktifkan.");
     }

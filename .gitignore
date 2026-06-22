@@ -17,6 +17,9 @@ laravel/bootstrap/cache/*.php
 # Storage - dataset hasil ekstraksi (ribuan file PNG)
 storage/datasets/
 
+# Storage - model files (.keras, generated JSON/PNG)
+storage/models/
+
 # Storage - dataset ZIP
 *.zip
 storage/test_dataset_v2.zip

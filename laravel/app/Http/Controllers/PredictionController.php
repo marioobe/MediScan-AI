@@ -44,9 +44,10 @@ class PredictionController extends Controller
         $image = $request->file('image');
         $result = $this->aiService->predict($image->path(), $image->getClientOriginalName());
 
-        if (isset($result['error'])) {
-            if ($request->ajax()) return response()->json(['error' => $result['error']], 502);
-            return back()->with('error', $result['error']);
+        if (!$result || isset($result['error']) || isset($result['detail']) || !isset($result['predicted_class'])) {
+            $msg = $result['detail'] ?? ($result['error'] ?? 'Format gambar tidak didukung atau sistem mendeteksi ini bukan citra medis USG yang valid.');
+            if ($request->ajax()) return response()->json(['error' => $msg], 400);
+            return back()->with('error', $msg);
         }
 
         try {

@@ -148,7 +148,7 @@
 <div id="cm-modal" class="fixed inset-0 z-50 hidden" aria-modal="true">
     <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" onclick="closeCmModal()"></div>
     <div class="relative min-h-screen flex items-center justify-center p-4">
-        <div class="bg-slate-800 rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+        <div class="bg-slate-800 rounded-2xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
             <div class="flex items-center justify-between p-5 border-b border-slate-700">
                 <h3 class="text-lg font-semibold text-white">
                     Confusion Matrix — <span id="cm-title" class="text-indigo-400"></span>
@@ -159,12 +159,13 @@
                     </svg>
                 </button>
             </div>
-            <div class="p-6 flex items-center justify-center bg-slate-900/30 rounded-b-2xl min-h-[300px]" id="cm-body">
-                <div id="cm-loading" class="text-center">
+            <div class="p-6 bg-slate-900/30">
+                <div id="cm-loading" class="text-center py-10">
                     <div class="animate-spin w-10 h-10 border-4 border-indigo-500 border-t-transparent rounded-full mx-auto mb-3"></div>
                     <p class="text-slate-500 text-sm">Loading confusion matrix...</p>
                 </div>
-                <img id="cm-image" src="" alt="Confusion Matrix" class="max-h-[70vh] w-auto hidden rounded-lg shadow-md">
+                <img id="cm-image" src="" alt="Confusion Matrix" class="max-h-[60vh] w-auto mx-auto hidden rounded-lg shadow-md">
+                <div id="cm-analysis" class="hidden mt-6 space-y-3 text-sm"></div>
             </div>
         </div>
     </div>
@@ -344,6 +345,8 @@ filterAndPaginate();
 function openCmModal(url, title) {
     document.getElementById('cm-title').textContent = title;
     document.getElementById('cm-image').classList.add('hidden');
+    document.getElementById('cm-analysis').classList.add('hidden');
+    document.getElementById('cm-analysis').innerHTML = '';
     document.getElementById('cm-loading').classList.remove('hidden');
     document.getElementById('cm-modal').classList.remove('hidden');
 
@@ -357,11 +360,88 @@ function openCmModal(url, title) {
             '<p class="text-red-500 text-sm">Failed to load Confusion Matrix.</p>';
     };
     img.src = url;
+
+    // Fetch raw CM data for dynamic analysis
+    var dataUrl = url.replace('/files/confusion_matrix/', '/files/confusion_matrix_data/');
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', dataUrl);
+    xhr.onload = function() {
+        if (xhr.status < 200 || xhr.status >= 300) return;
+        try {
+            var data = JSON.parse(xhr.responseText);
+            renderCmAnalysis(data.matrix, data.class_names);
+        } catch (_) {}
+    };
+    xhr.send();
+}
+
+function renderCmAnalysis(matrix, classNames) {
+    var n = classNames.length;
+    var totalGlobal = 0;
+    var correctGlobal = 0;
+    var rows = [];
+
+    for (var i = 0; i < n; i++) {
+        var tp = matrix[i][i];
+        var rowTotal = 0;
+        for (var j = 0; j < n; j++) rowTotal += matrix[i][j];
+        totalGlobal += rowTotal;
+        correctGlobal += tp;
+        var pct = rowTotal > 0 ? ((tp / rowTotal) * 100).toFixed(1) : '0.0';
+        rows.push({ label: classNames[i], tp: tp, total: rowTotal, pct: pct });
+    }
+
+    var globalAcc = totalGlobal > 0 ? ((correctGlobal / totalGlobal) * 100).toFixed(1) : '0.0';
+
+    var html = '<div class="bg-slate-800/60 border border-slate-700/50 rounded-xl p-4 space-y-3">';
+
+    html += '<h4 class="text-sm font-semibold text-white mb-2">📊 Analisis Confusion Matrix</h4>';
+
+    html += '<div class="text-xs text-slate-400">Akurasi Global: <span class="text-green-400 font-bold">' + globalAcc + '%</span> (' + correctGlobal + '/' + totalGlobal + ' sampel)</div>';
+
+    for (var r = 0; r < rows.length; r++) {
+        var row = rows[r];
+        html += '<div class="text-xs text-slate-400">Kelas <span class="text-white font-medium">' + row.label + '</span>: Sensitivitas <span class="text-indigo-300 font-medium">' + row.pct + '%</span> (' + row.tp + ' dari ' + row.total + ' sampel terdeteksi dengan benar).</div>';
+    }
+
+    // Check for concerning misclassifications
+    var warnings = [];
+    for (var i = 0; i < n; i++) {
+        for (var j = 0; j < n; j++) {
+            if (i === j) continue;
+            var rowTotal = 0;
+            for (var k = 0; k < n; k++) rowTotal += matrix[i][k];
+            if (rowTotal > 0) {
+                var misPct = (matrix[i][j] / rowTotal) * 100;
+                if (misPct > 5) {
+                    warnings.push(classNames[i] + ' → ' + classNames[j] + ' (' + misPct.toFixed(1) + '%)');
+                }
+            }
+        }
+    }
+
+    if (warnings.length > 0) {
+        html += '<div class="mt-3 p-3 bg-amber-900/30 border border-amber-700/50 rounded-lg">';
+        html += '<p class="text-amber-300 text-xs font-semibold mb-1">⚠️ Rekomendasi Optimasi</p>';
+        html += '<p class="text-amber-400 text-xs">Misklasifikasi cukup tinggi pada:</p><ul class="list-disc list-inside text-amber-400 text-xs mt-1">';
+        for (var w = 0; w < warnings.length; w++) {
+            html += '<li>' + warnings[w] + ' — pertimbangkan menambah data latih untuk kelas ini.</li>';
+        }
+        html += '</ul></div>';
+    }
+
+    html += '</div>';
+
+    var el = document.getElementById('cm-analysis');
+    el.innerHTML = html;
+    el.classList.remove('hidden');
 }
 
 function closeCmModal() {
     document.getElementById('cm-modal').classList.add('hidden');
     document.getElementById('cm-image').classList.add('hidden');
+    document.getElementById('cm-analysis').classList.add('hidden');
+    document.getElementById('cm-analysis').innerHTML = '';
 }
 
 // ===== Edit Modal =====

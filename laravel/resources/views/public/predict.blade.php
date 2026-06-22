@@ -22,6 +22,8 @@
             <p class="mt-1 text-amber-400">Sistem belum memiliki model AI yang aktif. Hubungi administrator untuk mengaktifkan model.</p>
         </div>
     @else
+        <div id="predict-error" class="hidden mb-6 p-4 bg-red-900/30 border border-red-700/50 text-red-300 rounded-lg"></div>
+
         <form id="predict-form" action="/tes/predict" method="POST" enctype="multipart/form-data" class="mb-8">
             @csrf
 
@@ -63,6 +65,18 @@
                 <input id="image-input" type="file" name="image" accept="image/*" class="hidden">
             </div>
 
+            {{-- Camera Button --}}
+            <div class="mt-4 text-center">
+                <button type="button" id="camera-btn"
+                    class="inline-flex items-center gap-2 bg-slate-700 hover:bg-slate-600 text-white px-5 py-2.5 rounded-xl text-sm font-medium transition">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/>
+                    </svg>
+                    Buka Kamera
+                </button>
+            </div>
+
             {{-- Disclaimer --}}
             <div class="mt-5 flex items-start gap-3 bg-slate-800/40 border border-slate-700/50 rounded-xl p-4">
                 <input type="checkbox" id="disclaimer" class="mt-0.5 w-4 h-4 rounded border-slate-600 bg-slate-800 text-indigo-500 focus:ring-indigo-500 focus:ring-offset-0 cursor-pointer shrink-0">
@@ -79,6 +93,36 @@
                 </button>
             </div>
         </form>
+
+        {{-- Flash Effect --}}
+        <div id="flash-effect" class="fixed inset-0 bg-white opacity-0 pointer-events-none z-[300] transition-opacity duration-75"></div>
+
+        {{-- Camera Modal --}}
+        <div id="camera-modal" class="fixed inset-0 z-[200] hidden items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+            <div class="bg-slate-900 rounded-2xl overflow-hidden max-w-lg w-full border border-slate-700 shadow-2xl">
+                <div class="relative bg-black">
+                    <video id="camera-stream" autoplay playsinline class="w-full aspect-[4/3] object-contain"></video>
+                    {{-- Scanner Overlay --}}
+                    <div class="absolute inset-0 pointer-events-none flex items-center justify-center">
+                        <div class="w-[80%] h-[75%] border-2 border-dashed border-indigo-400/60 rounded-xl"></div>
+                    </div>
+                    <div class="absolute bottom-3 left-0 right-0 text-center pointer-events-none">
+                        <span class="text-white/50 text-xs tracking-wide">Posisikan citra USG di dalam bingkai ini</span>
+                    </div>
+                </div>
+                <div class="flex flex-wrap items-center justify-center gap-3 p-4">
+                    <select id="camera-select" class="bg-slate-800 text-white text-xs rounded-lg p-2 border border-slate-700 hidden"></select>
+                    <button type="button" id="capture-btn"
+                        class="bg-gradient-to-r from-indigo-500 to-cyan-500 text-white px-6 py-2.5 rounded-xl text-sm font-medium hover:shadow-lg hover:shadow-indigo-500/25 transition">
+                        Tangkap Foto
+                    </button>
+                    <button type="button" id="cancel-camera-btn"
+                        class="bg-slate-700 hover:bg-slate-600 text-white px-6 py-2.5 rounded-xl text-sm font-medium transition">
+                        Batal
+                    </button>
+                </div>
+            </div>
+        </div>
 
         {{-- Result Section (hidden initially) --}}
         <div id="result-section" class="hidden mt-8">
@@ -248,6 +292,114 @@
     ageInput.addEventListener('input', checkForm);
     disclaimer.addEventListener('change', checkForm);
 
+    // Camera
+    var cameraStream = null;
+    var cameraModal = document.getElementById('camera-modal');
+    var videoEl = document.getElementById('camera-stream');
+    var cameraBtn = document.getElementById('camera-btn');
+    var captureBtn = document.getElementById('capture-btn');
+    var cancelCameraBtn = document.getElementById('cancel-camera-btn');
+    var cameraSelect = document.getElementById('camera-select');
+    var flashEl = document.getElementById('flash-effect');
+
+    function stopCameraStream() {
+        if (cameraStream) {
+            cameraStream.getTracks().forEach(function(t) { t.stop(); });
+            cameraStream = null;
+        }
+        videoEl.srcObject = null;
+    }
+
+    function flashShutter() {
+        if (!flashEl) return;
+        flashEl.classList.remove('opacity-0');
+        flashEl.classList.add('opacity-100');
+        setTimeout(function() {
+            flashEl.classList.remove('opacity-100');
+            flashEl.classList.add('opacity-0');
+        }, 100);
+    }
+
+    function startCamera(deviceId) {
+        var constraints = deviceId
+            ? { video: { deviceId: { exact: deviceId } } }
+            : { video: { facingMode: 'environment' } };
+
+        return navigator.mediaDevices.getUserMedia(constraints)
+            .then(function(stream) {
+                cameraStream = stream;
+                videoEl.srcObject = stream;
+                cameraModal.classList.remove('hidden');
+                cameraModal.classList.add('flex');
+                cameraBtn.disabled = false;
+                cameraBtn.textContent = 'Buka Kamera';
+            });
+    }
+
+    function populateCameraSelect() {
+        navigator.mediaDevices.enumerateDevices().then(function(devices) {
+            var cams = devices.filter(function(d) { return d.kind === 'videoinput'; });
+            if (cams.length < 2) return;
+            cameraSelect.innerHTML = '';
+            cameraSelect.classList.remove('hidden');
+            cams.forEach(function(cam, i) {
+                var opt = document.createElement('option');
+                opt.value = cam.deviceId;
+                opt.textContent = cam.label || 'Kamera ' + (i + 1);
+                cameraSelect.appendChild(opt);
+            });
+        });
+    }
+
+    cameraBtn.addEventListener('click', function() {
+        cameraBtn.disabled = true;
+        cameraBtn.textContent = 'Menghubungkan...';
+        startCamera().then(function() {
+            populateCameraSelect();
+        }).catch(function() {
+            cameraBtn.disabled = false;
+            cameraBtn.textContent = 'Buka Kamera';
+            showToast('Izin kamera ditolak atau perangkat kamera tidak ditemukan.', 'error');
+        });
+    });
+
+    cameraSelect.addEventListener('change', function() {
+        stopCameraStream();
+        startCamera(this.value).catch(function() {
+            showToast('Gagal membuka kamera yang dipilih.', 'error');
+        });
+    });
+
+    cancelCameraBtn.addEventListener('click', function() {
+        stopCameraStream();
+        cameraModal.classList.add('hidden');
+        cameraModal.classList.remove('flex');
+    });
+
+    captureBtn.addEventListener('click', function() {
+        if (!cameraStream) return;
+        flashShutter();
+
+        var canvas = document.createElement('canvas');
+        canvas.width = videoEl.videoWidth || 640;
+        canvas.height = videoEl.videoHeight || 480;
+        var ctx = canvas.getContext('2d');
+        ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
+
+        stopCameraStream();
+        cameraModal.classList.add('hidden');
+        cameraModal.classList.remove('flex');
+
+        canvas.toBlob(function(blob) {
+            var capturedFile = new File([blob], 'camera_capture.jpg', { type: 'image/jpeg' });
+
+            var dt = new DataTransfer();
+            dt.items.add(capturedFile);
+            input.files = dt.files;
+            input.dispatchEvent(new Event('change'));
+        }, 'image/jpeg', 0.92);
+    });
+
     input.addEventListener('change', function() {
         var file = this.files[0];
         if (!file) return;
@@ -299,7 +451,17 @@
         }
     });
 
+    window.showPredictError = function(message) {
+        var el = document.getElementById('predict-error');
+        if (!el) return;
+        el.textContent = message;
+        el.classList.remove('hidden');
+        resultSection?.classList.add('hidden');
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    };
+
     function populateResult(data) {
+        document.getElementById('predict-error')?.classList.add('hidden');
         resultName.innerText = nameInput.value.trim();
         resultAge.innerText = ageInput.value.trim() + ' tahun';
 
@@ -376,10 +538,13 @@
             }
 
             if (xhr.status >= 200 && xhr.status < 300) {
+                document.getElementById('predict-error')?.remove();
                 populateResult(data);
                 showToast('Analisis berhasil!', 'success');
             } else {
-                showToast(data.error || 'Analisis gagal. Silakan coba lagi.', 'error');
+                var errMsg = data.detail || data.error || 'Analisis gagal. Silakan coba lagi.';
+                showToast(errMsg, 'error');
+                showPredictError(errMsg);
             }
         });
 

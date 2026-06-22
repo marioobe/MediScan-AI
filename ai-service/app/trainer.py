@@ -165,7 +165,7 @@ class ProgressCallback(tf.keras.callbacks.Callback):
             _log(self.job_id, "Training cancelled by user.")
             return
         logs = logs or {}
-        display_epoch = epoch + 1 + self.initial_epochs
+        display_epoch = epoch + 1
         _update_job(self.job_id, current_epoch=display_epoch)
         ep = {
             "epoch": display_epoch,
@@ -192,6 +192,9 @@ def _run_training(job_id, dataset_path, classes, cfg):
         total_epochs = epochs
         half_epochs = max(1, total_epochs // 2)
         img_size = (image_size, image_size)
+
+        frozen_epochs = half_epochs
+        fine_tune_epochs = total_epochs - frozen_epochs
 
         _update_job(job_id, status="training", current_epoch=0, total_epoch=epochs, progress_percent=0)
         _log(job_id, "Memulai training...")
@@ -244,7 +247,7 @@ def _run_training(job_id, dataset_path, classes, cfg):
         early_stop = EarlyStopping(monitor="val_loss", patience=5, restore_best_weights=True, verbose=0)
         reduce_lr = ReduceLROnPlateau(monitor="val_loss", factor=0.5, patience=3, min_lr=1e-6, verbose=0)
         history_1 = model.fit(
-            train_gen, epochs=half_epochs, validation_data=val_gen,
+            train_gen, epochs=frozen_epochs, validation_data=val_gen,
             class_weight=class_weight,
             callbacks=[early_stop, reduce_lr, prog_cb_1],
             verbose=0
@@ -260,9 +263,10 @@ def _run_training(job_id, dataset_path, classes, cfg):
             layer.trainable = False
         model.compile(optimizer=Adam(learning_rate=1e-5), loss="categorical_crossentropy", metrics=["accuracy"])
         _log(job_id, "Fase 2: Fine-tuning dari layer 120+...")
-        prog_cb_2 = ProgressCallback(job_id, phase_label="Fase 2 (Fine-tune)", initial_epochs=epoch_1)
+        prog_cb_2 = ProgressCallback(job_id, phase_label="Fase 2 (Fine-tune)")
+        total_target_epochs = epoch_1 + fine_tune_epochs
         history_2 = model.fit(
-            train_gen, initial_epoch=epoch_1, epochs=total_epochs, validation_data=val_gen,
+            train_gen, initial_epoch=epoch_1, epochs=total_target_epochs, validation_data=val_gen,
             class_weight=class_weight,
             callbacks=[early_stop, reduce_lr, prog_cb_2],
             verbose=0
@@ -347,6 +351,13 @@ def _generate_confusion_matrix(model, val_gen, class_names, save_path):
     plt.tight_layout()
     plt.savefig(save_path)
     plt.close()
+
+    cm_data_path = save_path.replace(".png", ".json")
+    with open(cm_data_path, "w") as f:
+        json.dump({
+            "matrix": cm.tolist(),
+            "class_names": class_names,
+        }, f, indent=2)
 
 def _generate_classification_report(model, val_gen, class_names, save_path):
     val_gen.reset()

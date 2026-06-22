@@ -212,8 +212,16 @@ async def predict(file: UploadFile = File(...)):
     if model is None:
         raise HTTPException(400, "No active model available")
     image_bytes = await file.read()
-    image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-    image = image.resize(IMG_SIZE)
+    original_pil = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+
+    # Validasi: grayscale + tekstur USG
+    if not _is_grayscale_ultrasound(original_pil):
+        raise HTTPException(400, detail="Sistem mendeteksi bahwa gambar yang Anda unggah bukan merupakan citra medis ultrasonografi (USG) yang valid.")
+    # Gatekeeper AI: deteksi objek non-medis
+    if _has_real_world_objects(original_pil):
+        raise HTTPException(400, detail="Sistem menolak gambar. Terdeteksi adanya objek non-medis (manusia/pakaian/pemandangan) yang bukan merupakan citra USG payudara.")
+
+    image = original_pil.resize(IMG_SIZE)
     img_array = img_to_array(image)
     img_array = np.expand_dims(img_array, axis=0)
     img_array = preprocess_input(img_array)
@@ -222,7 +230,7 @@ async def predict(file: UploadFile = File(...)):
     confidence = float(predictions[predicted_idx])
     predicted_class = class_names[predicted_idx]
     probabilities = {class_names[i]: float(predictions[i]) for i in range(len(class_names))}
-    gradcam_url = _generate_gradcam(model, img_array, image)
+    gradcam_url = _generate_gradcam(model, img_array, original_pil)
     pred_data = _save_prediction(model_id, image_filename, predicted_class, confidence, probabilities, gradcam_url)
     return {
         "predicted_class": predicted_class,
@@ -297,11 +305,10 @@ def _compute_class_weight(class_counts):
 
 ```python
 class ProgressCallback(tf.keras.callbacks.Callback):
-    def __init__(self, job_id, phase_label="", initial_epochs=0):
+    def __init__(self, job_id, phase_label=""):
         super().__init__()
         self.job_id = job_id
         self.phase_label = phase_label
-        self.initial_epochs = initial_epochs
 
     def on_epoch_end(self, epoch, logs=None):
         job = jobs.get(self.job_id)
@@ -309,7 +316,7 @@ class ProgressCallback(tf.keras.callbacks.Callback):
             self.model.stop_training = True
             return
         logs = logs or {}
-        display_epoch = epoch + 1 + self.initial_epochs
+        display_epoch = epoch + 1  # global epoch index dari Keras
         _update_job(self.job_id, current_epoch=display_epoch)
         ep = {"epoch": display_epoch, "phase": self.phase_label,
               "accuracy": float(logs.get("accuracy", 0)),
@@ -339,20 +346,21 @@ model.compile(optimizer=Adam(learning_rate=1e-5),
 **Training Dua Fase dengan Dynamic Epoch:**
 
 ```python
-total_epochs = epochs
-half_epochs = max(1, total_epochs // 2)
+frozen_epochs = max(1, total_epochs // 2)
+fine_tune_epochs = total_epochs - frozen_epochs
 
 # Fase 1: Frozen Layers
 history_1 = model.fit(
-    train_gen, epochs=half_epochs, validation_data=val_gen,
+    train_gen, epochs=frozen_epochs, validation_data=val_gen,
     class_weight=class_weight,
     callbacks=[early_stop, reduce_lr, prog_cb_1], verbose=0
 )
 epoch_1 = len(history_1.history["loss"])
 
-# Fase 2: Fine-Tuning dari epoch_1 hingga total_epochs
+# Fase 2: Fine-Tuning (berurutan dari epoch_1)
+total_target = epoch_1 + fine_tune_epochs
 history_2 = model.fit(
-    train_gen, initial_epoch=epoch_1, epochs=total_epochs,
+    train_gen, initial_epoch=epoch_1, epochs=total_target,
     validation_data=val_gen, class_weight=class_weight,
     callbacks=[early_stop, reduce_lr, prog_cb_2], verbose=0
 )
@@ -395,6 +403,11 @@ def _generate_confusion_matrix(model, val_gen, class_names, save_path):
     plt.tight_layout()
     plt.savefig(save_path)
     plt.close()
+
+    # Simpan data mentah untuk analisis dinamis di frontend
+    cm_data_path = save_path.replace(".png", ".json")
+    with open(cm_data_path, "w") as f:
+        json.dump({"matrix": cm.tolist(), "class_names": class_names}, f, indent=2)
 ```
 
 ### 3.3 Penjelasan
@@ -557,6 +570,32 @@ medical-classifier/
 ├── TODO.md
 └── README.md
 ```
+
+## CHANGELOG — 22 Juni 2026
+
+### Validasi Citra USG (Image Gatekeeping)
+- **`_is_grayscale_ultrasound()`**: Deteksi grayscale via standar deviasi antar channel RGB (threshold 12.0) + deteksi tekstur medis via Canny Edge Density (min 1%). Foto blur/polos tanpa tepi granular langsung ditolak.
+- **`_has_real_world_objects()`**: AI Gatekeeper menggunakan MobileNetV2 pre-trained ImageNet. Memindai top-10 prediksi, menolak jika confidence > 2% pada 46+ keyword terlarang (manusia, pakaian, hewan, pemandangan, dll).
+- Pesan error: "Sistem mendeteksi bahwa gambar yang Anda unggah bukan merupakan citra medis ultrasonografi (USG) yang valid."
+
+### Fitur Kamera (Halaman Prediksi)
+- Tombol "Buka Kamera" + modal popup dengan stream `getUserMedia({ facingMode: "environment" })`
+- Scanner overlay (border putus-putus indigo) + teks petunjuk "Posisikan citra USG di dalam bingkai ini"
+- Camera selector dropdown via `enumerateDevices()` — otomatis muncul jika ada ≥ 2 kamera
+- Flash shutter effect (white flash 100ms) saat menangkap foto
+- Loading state "Menghubungkan..." pada tombol kamera
+- Hasil capture dikonversi ke `File` via `canvas.toBlob()` + `DataTransfer`, langsung di-inject ke form
+
+### Confusion Matrix Dinamis (Admin)
+- FastAPI sekarang menyimpan data mentah CM sebagai JSON (`confusion_matrix_{id}.json`) berisi `{ matrix: [[...]], class_names: [...] }`
+- Endpoint baru: `GET /files/confusion_matrix_data/{model_id}`
+- Frontend menghitung otomatis: Akurasi Global, Sensitivitas per kelas (TP/total sampel), dan warning misklasifikasi > 5% (kotak kuning "Rekomendasi Optimasi" + saran tambah data)
+
+### Perbaikan Bug
+- **Epoch numbering**: `display_epoch = epoch + 1` (tanpa tambahan `initial_epochs`) agar Fase 2 tidak melompat (6-10, bukan 11-15)
+- **SQL Error 1364 (activate)**: Ganti `updateOrCreate` dengan `firstOrNew` + set default `name`, `class_names`, `file_path` untuk model lama yang belum terdaftar di database lokal
+
+---
 
 ## KREDENSIAL DEFAULT
 

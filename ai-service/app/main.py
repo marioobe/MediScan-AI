@@ -12,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
 
 import tensorflow as tf
-from tensorflow.keras.applications.mobilenet_v2 import preprocess_input
+from tensorflow.keras.applications.mobilenet_v2 import MobileNetV2, preprocess_input, decode_predictions
 from tensorflow.keras.preprocessing.image import img_to_array, load_img
 
 from app.config import MODELS_DIR, PREDICTIONS_DIR, IMG_SIZE, DATASETS_DIR, VALID_EXTENSIONS
@@ -27,6 +27,13 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+try:
+    gatekeeper_model = MobileNetV2(weights='imagenet')
+    print("[GATEKEEPER] MobileNetV2 ImageNet loaded successfully")
+except Exception as e:
+    print(f"[GATEKEEPER] Failed to load MobileNetV2: {e}")
+    gatekeeper_model = None
 
 def _get_active_model():
     active_file = os.path.join(MODELS_DIR, "active_model.json")
@@ -105,6 +112,59 @@ def _generate_gradcam(model, img_array, predicted_idx, original_pil):
     path = os.path.join(PREDICTIONS_DIR, filename)
     cv2.imwrite(path, overlay)
     return filename
+
+def _is_grayscale_ultrasound(image_pil):
+    img_np = np.array(image_pil)
+
+    if len(img_np.shape) == 3:
+        channels_std = np.mean(np.std(img_np, axis=-1))
+        print(f"[DEBUG] Nilai standar deviasi warna: {channels_std}")
+        if channels_std > 12.0:
+            return False
+
+    gray = cv2.cvtColor(img_np, cv2.COLOR_RGB2GRAY) if len(img_np.shape) == 3 else img_np
+    edges = cv2.Canny(gray, 30, 100)
+    edge_density = np.sum(edges > 0) / edges.size
+    print(f"[DEBUG] Kerapatan tepi gambar (Edge Density): {edge_density}")
+
+    if edge_density < 0.01:
+        print("[VALIDASI GAGAL] Gambar terlalu mulus/blur, tidak memiliki karakteristik tekstur USG.")
+        return False
+
+    return True
+
+def _has_real_world_objects(image_pil):
+    if gatekeeper_model is None:
+        return False
+
+    img = image_pil.convert('RGB').resize((224, 224))
+    img_array = img_to_array(img)
+    img_array = np.expand_dims(img_array, axis=0)
+    img_array = preprocess_input(img_array)
+
+    preds = gatekeeper_model.predict(img_array, verbose=0)
+    decoded = decode_predictions(preds, top=10)[0]
+
+    forbidden_keywords = [
+        'person', 'man', 'woman', 'boy', 'girl', 'human', 'guy',
+        'shirt', 't-shirt', 'jean', 'dress', 'apparel', 'coat', 'jersey',
+        'suit', 'jacket', 'jeans', 'pants', 'sweater', 'scuba', 'diver',
+        'beach', 'seashore', 'lakeshore', 'ocean', 'mountain', 'valley', 'cliff',
+        'sandbar', 'promontory',
+        'spotlight', 'matchstick', 'candle', 'torch', 'flashlight',
+        'room', 'home', 'building', 'vehicle', 'car', 'dog', 'cat', 'animal',
+    ]
+
+    print("[DEBUG GATEKEEPER] 5 Prediksi Teratas:")
+    for i, (_, label, score) in enumerate(decoded[:5]):
+        print(f"  {i+1}. {label}: {score*100:.2f}%")
+
+    for _, label, score in decoded:
+        label_lower = label.lower()
+        if score > 0.02 and any(kw in label_lower for kw in forbidden_keywords):
+            print(f"[GATEKEEPER] Menolak gambar. Terdeteksi: {label} ({score*100:.2f}%)")
+            return True
+    return False
 
 def _load_all_predictions():
     predictions = []
@@ -218,6 +278,15 @@ async def get_confusion_matrix(model_id: str):
         raise HTTPException(404, "Confusion matrix not found")
     return FileResponse(path, media_type="image/png")
 
+@app.get("/files/confusion_matrix_data/{model_id}")
+async def get_confusion_matrix_data(model_id: str):
+    path = os.path.join(MODELS_DIR, f"confusion_matrix_{model_id}.json")
+    if not os.path.exists(path):
+        raise HTTPException(404, "Confusion matrix data not found")
+    with open(path, "r") as f:
+        data = json.load(f)
+    return JSONResponse(data)
+
 @app.get("/files/gradcam/{filename}")
 async def get_gradcam(filename: str):
     path = os.path.join(PREDICTIONS_DIR, filename)
@@ -235,6 +304,10 @@ async def predict(file: UploadFile = File(...)):
         raise HTTPException(400, "No active model available. Please ask admin to activate a model first.")
     image_bytes = await file.read()
     original_pil = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+    if not _is_grayscale_ultrasound(original_pil):
+        raise HTTPException(status_code=400, detail="Sistem mendeteksi bahwa gambar yang Anda unggah bukan merupakan citra medis ultrasonografi (USG) yang valid.")
+    if _has_real_world_objects(original_pil):
+        raise HTTPException(status_code=400, detail="Sistem menolak gambar. Terdeteksi adanya objek non-medis (manusia/pakaian/pemandangan) yang bukan merupakan citra USG payudara.")
     image = original_pil.resize(IMG_SIZE)
     img_array = img_to_array(image)
     img_array = np.expand_dims(img_array, axis=0)
@@ -344,6 +417,7 @@ async def delete_model(model_id: str):
     patterns = [
         f"model_{model_id}.keras",
         f"confusion_matrix_{model_id}.png",
+        f"confusion_matrix_{model_id}.json",
         f"classification_report_{model_id}.json",
         f"history_{model_id}.json",
         f"class_names_{model_id}.json",
