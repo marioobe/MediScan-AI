@@ -348,6 +348,8 @@ def _generate_confusion_matrix(model, val_gen, class_names, save_path):
     plt.title("Confusion Matrix")
     plt.ylabel("True Label")
     plt.xlabel("Predicted Label")
+    plt.xticks(rotation=45, ha='right')
+    plt.yticks(rotation=0)
     plt.tight_layout()
     plt.savefig(save_path)
     plt.close()
