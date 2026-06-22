@@ -366,7 +366,7 @@ history_2 = model.fit(
 )
 ```
 
-**Webhook Notifikasi ke Laravel:**
+**Webhook Notifikasi ke Laravel (dengan error checking):**
 
 ```python
 try:
@@ -374,15 +374,24 @@ try:
         "LARAVEL_WEBHOOK_URL",
         "http://localhost:8080/api/training/webhook"
     )
+    job_data = jobs.get(job_id, {})
     resp = requests.post(laravel_url, json={
         "job_id": job_id,
         "status": "Completed",
         "accuracy": float(val_acc),
         "loss": float(val_loss),
+        "epoch_history": job_data.get("epochs", []),
+        "current_epoch": job_data.get("current_epoch", 0),
+        "total_epoch": job_data.get("total_epoch", 0),
+        "model_id": job_data.get("model_id", ""),
     }, timeout=5)
-    _log(job_id, f"Notifikasi ke Laravel: HTTP {resp.status_code}")
+    if resp.ok:
+        _log(job_id, f"Notifikasi ke Laravel: HTTP {resp.status_code} OK")
+    else:
+        _log(job_id, f"Notifikasi ke Laravel: HTTP {resp.status_code} — {resp.text[:200]}")
 except Exception as webhook_err:
     _log(job_id, f"Gagal mengirim notifikasi ke Laravel: {webhook_err}")
+    _log(job_id, f"Laravel webhook URL: {laravel_url}")
 ```
 
 **Confusion Matrix & Classification Report:**
@@ -424,21 +433,21 @@ Penggunaan parameter `initial_epoch` pada pemanggilan `model.fit` fase 2 memasti
 
 ### 3.4 Hasil
 
-Model final yang dihasilkan bernama `model_061630de.keras` dengan hasil evaluasi sebagai berikut.
+Model final yang dihasilkan bernama `model_cdc9c666.keras` (update terakhir) dengan hasil evaluasi sebagai berikut.
 
-**Performa Final (Epoch Terakhir):**
+**Performa Final (Epoch 20):**
 
 | Metrik | Nilai |
 |--------|-------|
-| Akurasi Validasi | 79.03% |
-| Loss Validasi | 0.5092 |
+| Akurasi Validasi | 81.11% |
+| Loss Validasi | 0.4499 |
 
 **Performa Terbaik (Best Epoch):**
 
 | Metrik | Nilai |
 |--------|-------|
-| Akurasi Validasi | 80.30% |
-| Loss Validasi | 0.4471 |
+| Akurasi Validasi | 81.11% (epoch 11-12, 14, 16, 18-20) |
+| Loss Validasi | 0.4499 (epoch 20) |
 
 Confusion matrix menunjukkan performa yang aman secara klinis. Sistem berhasil meminimalkan kesalahan prediksi pada kelas malignant. False negative rate pada kelas malignant sangat rendah, sehingga hampir seluruh kasus tumor ganas terdeteksi dengan benar. Capaian ini memenuhi tujuan utama sistem yaitu mengutamakan keselamatan pasien di atas segalanya.
 
@@ -450,7 +459,7 @@ Selain metrik kuantitatif, sistem juga menyediakan visualisasi **Grad-CAM** pada
 
 ### 4.1 Kesimpulan
 
-Integrasi data augmentation menggunakan layer Keras bawaan (RandomFlip, RandomRotation, RandomZoom) dan penerapan class weights berhasil membuat model belajar secara objektif tanpa mengalami overfitting. Arsitektur MobileNetV2 dengan fine-tuning dua fase mampu mencapai akurasi validasi final sebesar 79.03% dengan loss 0.5092, serta performa terbaik 80.30% dengan loss 0.4471. Sistem MediScan AI yang dibangun dengan Laravel dan FastAPI menyediakan platform lengkap untuk pelatihan dan klasifikasi gambar medis secara real-time.
+Integrasi data augmentation menggunakan layer Keras bawaan (RandomFlip, RandomRotation, RandomZoom) dan penerapan class weights berhasil membuat model belajar secara objektif tanpa mengalami overfitting. Arsitektur MobileNetV2 dengan fine-tuning dua fase mampu mencapai akurasi validasi final sebesar 81.11% dengan loss 0.4499. Sistem MediScan AI yang dibangun dengan Laravel dan FastAPI menyediakan platform lengkap untuk pelatihan dan klasifikasi gambar medis secara real-time.
 
 ---
 
@@ -566,12 +575,32 @@ medical-classifier/
 │   ├── datasets/            # Dataset ZIP yang diunggah
 │   ├── models/              # File model .keras + history JSON
 │   └── predictions/         # Hasil prediksi
+├── start-servers.ps1        # Mulai semua server (FastAPI + Laravel + Vite)
+├── stop-servers.ps1         # Matikan semua server berdasarkan port
 ├── .env.example
 ├── TODO.md
 └── README.md
 ```
 
-## CHANGELOG — 22 Juni 2026
+## CHANGELOG
+
+### 22 Juni 2026 (Sore) — Perbaikan Sinkronisasi Status Training
+
+- **Webhook FastAPI diperkuat**: Sekarang mengirim `model_id` ke Laravel, mengecek `resp.ok` dan mencatat response body jika gagal (sebelumnya hanya log status code).
+- **Marker `[MODEL_ID: xxx]`**: Disimpan ke kolom `log` training_jobs oleh webhook, menjadi jembatan relasi antara TrainingJob dan AiModel tanpa migrasi baru.
+- **Endpoint `mark-completed`**: `POST /admin/training/{id}/mark-completed` — endpoint baru untuk JS panggil setelah aktivasi dari halaman progress, mengupdate status training ke "completed".
+- **Safeguard `AdminModelController::activate()`**: Setiap model diaktifkan, method `syncTrainingJobStatus()` mencari TrainingJob via marker `[MODEL_ID: xxx]` di log dan mengupdate status → "completed" (pengaman jika webhook gagal).
+- **JS `activateModel()` diperbarui**: Setelah aktivasi via FastAPI, langsung panggil `mark-completed` agar DB Laravel sinkron.
+- **Fix session #7**: Migration `add_epoch_history` belum pernah dijalankan, menyebabkan webhook gagal dengan `Unknown column 'epoch_history'`. Migration dijalankan, data training #7 (81.1% acc, 20 epoch) di-recover dari file `history_cdc9c666.json`.
+
+### 22 Juni 2026 — Epoch History Permanen di Database
+
+- **Migration baru**: `add_epoch_history_to_training_jobs_table` — kolom JSON `epoch_history` untuk menyimpan seluruh riwayat epoch.
+- **Webhook diperbarui**: FastAPI kini mengirim `epoch_history`, `current_epoch`, dan `total_epoch` ke Laravel saat training completed.
+- **Model TrainingJob**: Ditambahkan `epoch_history` ke `$fillable` dan `$casts` (sebagai `array`).
+- **View Blade**: Bagian "Epoch History" untuk completed/failed jobs sekarang merender data dari `$job->epoch_history` (tabel dengan phase separator, fallback ke log parsing jika kosong).
+- **Indikator Epoch**: Menampilkan angka terakhir dari history + total epoch, bukan strip `-`.
+- **Start/Stop Scripts**: `start-servers.ps1` dan `stop-servers.ps1` untuk manajemen server.
 
 ### Validasi Citra USG (Image Gatekeeping)
 - **`_is_grayscale_ultrasound()`**: Deteksi grayscale via standar deviasi antar channel RGB (threshold 12.0) + deteksi tekstur medis via Canny Edge Density (min 1%). Foto blur/polos tanpa tepi granular langsung ditolak.
