@@ -12,36 +12,36 @@ $foundAny = $false
 
 foreach ($svc in $C_Ports) {
     $connections = netstat -ano 2>$null | Select-String ":$($svc.Port)\s"
-    $pids = @()
+    $procIds = @()
     foreach ($conn in $connections) {
         $parts = ($conn -split '\s+') | Where-Object { $_ -ne '' }
         if ($parts.Count -ge 5) {
-            $pid = $parts[-1]
-            if ($pid -match '^\d+$' -and $pid -notin $pids) {
-                $pids += $pid
+            $foundId = $parts[-1]
+            if ($foundId -match '^\d+$' -and $foundId -notin $procIds) {
+                $procIds += $foundId
             }
         }
     }
 
-    if ($pids.Count -eq 0) {
-        Write-Host ("  [SKIP] {0,-25} (port {1}) — not running" -f $svc.Name, $svc.Port) -ForegroundColor DarkYellow
+    if ($procIds.Count -eq 0) {
+        Write-Host ("  [SKIP] {0,-25} (port {1}) - not running" -f $svc.Name, $svc.Port) -ForegroundColor DarkYellow
         continue
     }
 
     $foundAny = $true
     $procNames = @()
 
-    foreach ($pid in $pids) {
+    foreach ($foundId in $procIds) {
         try {
-            $proc = Get-Process -Id $pid -ErrorAction Stop
-            $procNames += "$($proc.Name).exe (PID $pid)"
-            Stop-Process -Id $pid -Force -ErrorAction Stop
+            $proc = Get-Process -Id $foundId -ErrorAction Stop
+            $procNames += "$($proc.Name).exe (PID $foundId)"
+            Stop-Process -Id $foundId -Force -ErrorAction Stop
         } catch {
-            Write-Host "  [WARN] Failed to stop PID $pid : $_" -ForegroundColor Yellow
+            Write-Host "  [WARN] Failed to stop PID $foundId : $_" -ForegroundColor Yellow
         }
     }
 
-    Write-Host ("  [OK] Stopped {0,-25} (port {1}) — {2}" -f $svc.Name, $svc.Port, ($procNames -join ", ")) -ForegroundColor Green
+    Write-Host ("  [OK] Stopped {0,-25} (port {1}) - {2}" -f $svc.Name, $svc.Port, ($procNames -join ", ")) -ForegroundColor Green
 }
 
 if (-not $foundAny) {
