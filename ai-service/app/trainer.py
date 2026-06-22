@@ -324,11 +324,18 @@ def _run_training(job_id, dataset_path, classes, cfg):
                 "LARAVEL_WEBHOOK_URL",
                 "http://localhost:8080/api/training/webhook"
             )
+            job_data = jobs.get(job_id, {})
+            epoch_history = job_data.get("epochs", [])
+            current_epoch = job_data.get("current_epoch", 0)
+            total_epoch = job_data.get("total_epoch", 0)
             resp = requests.post(laravel_url, json={
                 "job_id": job_id,
                 "status": "Completed",
                 "accuracy": float(val_acc),
                 "loss": float(val_loss),
+                "epoch_history": epoch_history,
+                "current_epoch": current_epoch,
+                "total_epoch": total_epoch,
             }, timeout=5)
             _log(job_id, f"Notifikasi ke Laravel: HTTP {resp.status_code}")
         except Exception as webhook_err:

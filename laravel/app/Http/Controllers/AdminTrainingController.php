@@ -128,10 +128,13 @@ class AdminTrainingController extends Controller
         Log::info($request->all());
 
         $validated = $request->validate([
-            'job_id'   => 'required|string',
-            'status'   => 'required|string',
-            'accuracy' => 'nullable|numeric',
-            'loss'     => 'nullable|numeric',
+            'job_id'         => 'required|string',
+            'status'         => 'required|string',
+            'accuracy'       => 'nullable|numeric',
+            'loss'           => 'nullable|numeric',
+            'epoch_history'  => 'nullable|array',
+            'current_epoch'  => 'nullable|integer',
+            'total_epoch'    => 'nullable|integer',
         ]);
 
         $job = TrainingJob::where('job_id', $validated['job_id'])->first();
@@ -139,12 +142,22 @@ class AdminTrainingController extends Controller
             return response()->json(['error' => 'Training job not found'], 404);
         }
 
-        $job->update([
+        $updateData = [
             'status'          => $validated['status'],
             'accuracy_result' => $validated['accuracy'] ?? null,
             'loss_result'     => $validated['loss'] ?? null,
+            'epoch_history'   => $validated['epoch_history'] ?? null,
             'finished_at'     => now(),
-        ]);
+        ];
+
+        if (isset($validated['current_epoch'])) {
+            $updateData['current_epoch'] = $validated['current_epoch'];
+        }
+        if (isset($validated['total_epoch'])) {
+            $updateData['total_epoch'] = $validated['total_epoch'];
+        }
+
+        $job->update($updateData);
 
         return response()->json(['success' => true]);
     }

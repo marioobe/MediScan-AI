@@ -44,9 +44,15 @@
                             {{ ucfirst($job->status) }}
                         </p>
                     </div>
+                    @php
+                        $lastEpoch = $job->current_epoch;
+                        if (!$lastEpoch && $job->epoch_history) {
+                            $lastEpoch = count($job->epoch_history);
+                        }
+                    @endphp
                     <div class="p-4 bg-slate-700/30 rounded-xl">
                         <p class="text-xs text-slate-400 uppercase tracking-wide">Epoch</p>
-                        <p class="text-lg font-semibold mt-1 text-white">{{ $job->total_epoch ? $job->total_epoch.' / '.$job->total_epoch : '-' }}</p>
+                        <p class="text-lg font-semibold mt-1 text-white">{{ $lastEpoch ? $lastEpoch.' / '.($job->total_epoch ?? $lastEpoch) : '-' }}</p>
                     </div>
                     <div class="p-4 bg-slate-700/30 rounded-xl">
                         <p class="text-xs text-slate-400 uppercase tracking-wide">Accuracy</p>
@@ -91,7 +97,27 @@
                                 <th class="pb-2 pr-4 text-right">Val Loss ↓</th>
                             </tr>
                         </thead>
-                        @if($job->log)
+                        @if($job->epoch_history)
+                        <tbody>
+                            @php $lastPhase = ''; @endphp
+                            @foreach($job->epoch_history as $index => $ep)
+                                @if(isset($ep['phase']) && $ep['phase'] !== $lastPhase)
+                                    @if($lastPhase !== '')
+                                    <tr class="phase-separator"><td colspan="5"><div class="border-t border-slate-700 my-1"></div></td></tr>
+                                    @endif
+                                    <tr class="phase-separator"><td colspan="5"><span class="phase-label">{{ $ep['phase'] }}</span></td></tr>
+                                    @php $lastPhase = $ep['phase']; @endphp
+                                @endif
+                                <tr>
+                                    <td class="py-2 pr-4 text-slate-400">{{ $ep['epoch'] }}</td>
+                                    <td class="py-2 pr-4 text-right font-mono">{{ isset($ep['accuracy']) ? number_format($ep['accuracy'] * 100, 1).'%' : '-' }}</td>
+                                    <td class="py-2 pr-4 text-right font-mono">{{ isset($ep['loss']) ? number_format($ep['loss'], 4) : '-' }}</td>
+                                    <td class="py-2 pr-4 text-right font-mono font-semibold text-indigo-400">{{ isset($ep['val_accuracy']) ? number_format($ep['val_accuracy'] * 100, 1).'%' : '-' }}</td>
+                                    <td class="py-2 pr-4 text-right font-mono">{{ isset($ep['val_loss']) ? number_format($ep['val_loss'], 4) : '-' }}</td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                        @elseif($job->log)
                         <tbody>
                             @foreach(explode("\n", $job->log) as $epochLine)
                                 @if(trim($epochLine))

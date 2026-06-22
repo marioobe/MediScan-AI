@@ -11,12 +11,13 @@ class TrainingJob extends Model
     protected $fillable = [
         'job_id', 'dataset_path', 'status', 'current_epoch', 'total_epoch',
         'progress_percent', 'accuracy_result', 'loss_result',
-        'error_message', 'log', 'started_at', 'finished_at', 'created_by'
+        'error_message', 'epoch_history', 'log', 'started_at', 'finished_at', 'created_by'
     ];
 
     protected $casts = [
         'started_at' => 'datetime',
         'finished_at' => 'datetime',
+        'epoch_history' => 'array',
     ];
 
     public function admin(): BelongsTo
